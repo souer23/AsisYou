@@ -3,6 +3,8 @@ from rest_framework.response import Response
 from .calculos import calcular_notas
 from .asistencia_calculos import calcular_asistencia
 from .llm import detectar_intencion
+from .simulaciones import responder_simulacion
+from django.utils import timezone
 
 from .models import Estudiante, Inscripcion, Evaluacion, Nota
 from decimal import Decimal, ROUND_HALF_UP
@@ -35,6 +37,35 @@ def chat(request):
     # Consultas sobre promedios y notas necesarias
     consulta = mensaje.lower()
     intencion = detectar_intencion(mensaje)
+
+    # Simulaciones de notas hipotéticas
+    es_simulacion = (
+        intencion == "SIMULACION"
+        or consulta.lstrip("¿¡ ").startswith((
+            "si me saco",
+            "si saco",
+            "si obtengo",
+            "si tengo un",
+            "si tuviera"
+        ))
+    )
+
+    if es_simulacion:
+        try:
+            estudiante = Estudiante.objects.get(
+                usuario__username="alumno_demo"
+            )
+        except Estudiante.DoesNotExist:
+            return Response({
+                "reply": "No encontré al estudiante de prueba."
+            })
+
+        respuesta = responder_simulacion(
+            estudiante,
+            mensaje
+        )
+
+        return Response({"reply": respuesta})
 
      # Consultas sobre asistencia
     if intencion == "ASISTENCIA" or any(
@@ -289,4 +320,125 @@ def chat(request):
             '¡Hola! Soy AsisYou. Por ahora puedes '
             'preguntarme: ¿Qué notas tengo?'
         )
+    })
+
+@api_view(['GET'])
+def perfil_demo(request):
+    try:
+        estudiante = Estudiante.objects.select_related(
+            'usuario', 'carrera'
+        ).get(usuario__username='alumno_demo')
+
+    except Estudiante.DoesNotExist:
+        return Response(
+            {'error': 'No encontré al estudiante de prueba.'},
+            status=404
+        )
+
+    inscripciones = Inscripcion.objects.filter(
+        estudiante=estudiante,
+        estado='Activa'
+    ).select_related('seccion__asignatura')
+
+    asignaturas = []
+    promedios = []
+    clases_presentes = 0
+    clases_realizadas = 0
+
+    for inscripcion in inscripciones:
+        seccion = inscripcion.seccion
+
+        notas = calcular_notas(inscripcion)
+        asistencia = calcular_asistencia(inscripcion)
+
+        promedio = notas.get('promedio_actual')
+        porcentaje = None
+
+        if promedio is not None:
+            promedios.append(Decimal(str(promedio)))
+
+        if (
+            asistencia.get('requiere_asistencia')
+            and 'error' not in asistencia
+        ):
+            actual = asistencia.get('porcentaje_actual')
+
+            if actual is not None:
+                porcentaje = (
+                    formato_porcentaje(actual) + '%'
+                )
+
+            clases_presentes += asistencia['clases_presentes']
+            clases_realizadas += asistencia['clases_realizadas']
+
+        asignaturas.append({
+            'codigo': seccion.asignatura.codigo,
+            'nombre': seccion.asignatura.nombre,
+            'seccion': seccion.nombre_seccion,
+            'promedio': (
+                formato_nota(promedio)
+                if promedio is not None else None
+            ),
+            'asistencia': porcentaje
+        })
+
+    promedio_general = None
+
+    if promedios:
+        promedio_general = formato_nota(
+            sum(promedios) / len(promedios)
+        )
+
+    asistencia_general = None
+
+    if clases_realizadas > 0:
+        asistencia_general = (
+            formato_porcentaje(
+                Decimal(clases_presentes)
+                * 100 / Decimal(clases_realizadas)
+            ) + '%'
+        )
+     # Obtener próximas evaluaciones pendientes
+    proximas = []
+    hoy = timezone.localdate()
+
+    for inscripcion in inscripciones:
+        notas_registradas = Nota.objects.filter(
+            inscripcion=inscripcion
+        ).values_list("evaluacion_id", flat=True)
+
+        evaluaciones = Evaluacion.objects.filter(
+            seccion=inscripcion.seccion,
+            fecha__gte=hoy
+        ).exclude(
+            id__in=notas_registradas
+        ).order_by("fecha")
+
+        for evaluacion in evaluaciones:
+            proximas.append({
+                "fecha": evaluacion.fecha.isoformat(),
+                "titulo": evaluacion.nombre,
+                "asignatura": inscripcion.seccion.asignatura.nombre,
+                "tipo": evaluacion.get_tipo_display()
+            })
+
+    proximas.sort(key=lambda actividad: actividad["fecha"])
+    usuario = estudiante.usuario
+    nombre = usuario.get_full_name().strip() or usuario.username
+
+    iniciales = ''.join(
+        parte[0].upper()
+        for parte in nombre.split()[:2]
+    )
+
+    return Response({
+        'nombre': nombre,
+        'iniciales': iniciales,
+        'carrera': estudiante.carrera.nombre,
+        'semestre': estudiante.semestre_actual,
+        'total_asignaturas': len(asignaturas),
+        'promedio_general': promedio_general,
+        'asistencia_general': asistencia_general,
+        'asignaturas': asignaturas,
+        'proximas_actividades': proximas[:3]
     })

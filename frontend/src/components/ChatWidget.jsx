@@ -5,7 +5,7 @@ import './ChatWidget.css'
 const welcomeMessage = {
   id: 'welcome',
   role: 'assistant',
-  content: '¡Hola, Gonzalo! Soy AsisYou, tu asistente académico. ¿En qué puedo ayudarte hoy?',
+  content: '¡Hola! Soy AsisYou, tu asistente académico. ¿En qué puedo ayudarte hoy?',
 }
 
 const suggestions = [
@@ -14,7 +14,7 @@ const suggestions = [
   '¿Qué evaluaciones tengo pronto?',
 ]
 
-function ChatWidget() {
+function ChatWidget({ nombreEstudiante }) {
   const [isOpen, setIsOpen] = useState(false)
   const [isExpanded, setIsExpanded] = useState(false)
   const [message, setMessage] = useState('')
@@ -95,7 +95,11 @@ function ChatWidget() {
               <div className={`message-row message-row--${item.role}`} key={item.id}>
                 {item.role === 'assistant' && <span className="message-avatar">✦</span>}
                 <div className="message-bubble">
-                  <p>{item.content}</p>
+                  <p>
+                    {item.id === 'welcome' && nombreEstudiante
+                      ? `¡Hola, ${nombreEstudiante}! Soy AsisYou, tu asistente académico. ¿En qué puedo ayudarte hoy?`
+                      : item.content}
+                  </p>
                   <span className="message-time">{item.role === 'assistant' ? 'AsisYou' : 'Tú'}</span>
                 </div>
               </div>

@@ -44,3 +44,13 @@ export async function sendMessage(message) {
 
   return data.reply
 }
+
+export async function obtenerPerfil() {
+  const response = await fetch('/api/perfil/')
+
+  if (!response.ok) {
+    throw new Error('No se pudo cargar el perfil del estudiante.')
+  }
+
+  return await response.json()
+}

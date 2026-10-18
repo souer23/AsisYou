@@ -1,17 +1,11 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import ChatWidget from './components/ChatWidget'
+import { obtenerPerfil } from './services/api'
 import './App.css'
 
-const subjects = [
-  { code: 'INF-302', name: 'Bases de Datos', teacher: 'Prof. Marcela Soto', grade: '5,6', progress: 76, color: 'yellow' },
-  { code: 'INF-305', name: 'Ingeniería de Software', teacher: 'Prof. Rodrigo Pérez', grade: '6,1', progress: 88, color: 'blue' },
-  { code: 'MAT-204', name: 'Estadística', teacher: 'Prof. Camila Rojas', grade: '4,9', progress: 64, color: 'green' },
-]
-
-const upcoming = [
-  { day: '16', month: 'OCT', title: 'Control de Bases de Datos', subject: 'Bases de Datos', type: 'Evaluación' },
-  { day: '20', month: 'OCT', title: 'Entrega proyecto grupal', subject: 'Ingeniería de Software', type: 'Entrega' },
-  { day: '23', month: 'OCT', title: 'Prueba unidad 2', subject: 'Estadística', type: 'Evaluación' },
+const MESES = [
+  'ENE', 'FEB', 'MAR', 'ABR', 'MAY', 'JUN',
+  'JUL', 'AGO', 'SEP', 'OCT', 'NOV', 'DIC'
 ]
 
 const navItems = [
@@ -26,6 +20,41 @@ const navItems = [
 function App() {
   const [activeNav, setActiveNav] = useState('inicio')
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [perfil, setPerfil] = useState(null)
+  const [errorPerfil, setErrorPerfil] = useState('')
+
+  useEffect(() => {
+    let activo = true
+
+    obtenerPerfil()
+      .then((datos) => {
+        if (activo) setPerfil(datos)
+      })
+      .catch((error) => {
+        if (activo) setErrorPerfil(error.message)
+      })
+
+    return () => {
+      activo = false
+    }
+  }, [])
+
+  const asignaturas = perfil?.asignaturas ?? []
+  const proximasActividades = perfil?.proximas_actividades ?? []
+
+  const asignaturasDestacadas = [...asignaturas]
+    .sort((a, b) => {
+      const notaA = a.promedio === null
+        ? Infinity : Number(a.promedio.replace(',', '.'))
+
+      const notaB = b.promedio === null
+        ? Infinity : Number(b.promedio.replace(',', '.'))
+
+      return notaA - notaB
+    })
+    .slice(0, 3)
+
+  const primerNombre = perfil?.nombre?.split(' ')[0] ?? 'estudiante'
 
   const activeLabel = navItems.find((item) => item.id === activeNav)?.label ?? 'Inicio'
 
@@ -81,8 +110,8 @@ function App() {
               ♧<span className="notification-dot" />
             </button>
             <div className="profile">
-              <div className="avatar">GP</div>
-              <div className="profile-copy"><strong>Gonzalo Peredo</strong><span>Estudiante</span></div>
+              <div className="avatar">{perfil?.iniciales ?? '—'}</div>
+              <div className="profile-copy"><strong>{perfil?.nombre ?? 'Cargando perfil...'}</strong><span>Estudiante</span></div>
               <span className="profile-chevron">⌄</span>
             </div>
           </div>
@@ -94,7 +123,7 @@ function App() {
               <section className="welcome-row">
                 <div>
                   <div className="eyebrow"><span className="eyebrow-line" /> MI ESPACIO ACADÉMICO</div>
-                  <h1>¡Hola, Gonzalo! <span className="wave">✦</span></h1>
+                  <h1>¡Hola, {primerNombre}! <span className="wave">✦</span></h1>
                   <p className="welcome-subtitle">Aquí tienes un resumen de tu actividad académica.</p>
                 </div>
                 <div className="semester-pill"><span /> Segundo semestre 2026</div>
@@ -102,39 +131,86 @@ function App() {
 
               <section className="summary-grid" aria-label="Resumen académico">
                 <article className="summary-card">
-                  <div className="summary-card-top"><span className="summary-icon summary-icon--yellow">▧</span><span className="card-overline">PROMEDIO GENERAL</span></div>
-                  <div className="summary-value">5,5 <span className="value-trend">↗</span></div>
-                  <div className="summary-foot">Escala de notas de 1,0 a 7,0</div>
+                  <div className="summary-card-top">
+                    <span className="summary-icon summary-icon--yellow">▧</span>
+                    <span className="card-overline">PROMEDIO ACTUAL</span>
+                  </div>
+
+                  <div className="summary-value">
+                    {perfil?.promedio_general ?? '—'}
+                  </div>
+
+                  <div className="summary-foot">
+                    Media referencial de asignaturas con notas
+                  </div>
                 </article>
+
                 <article className="summary-card">
-                  <div className="summary-card-top"><span className="summary-icon summary-icon--green">✓</span><span className="card-overline">ASISTENCIA</span></div>
-                  <div className="summary-value">87<span className="summary-unit">%</span></div>
-                  <div className="progress-track"><span style={{ width: '87%' }} /></div>
-                  <div className="summary-foot">Vas por buen camino</div>
+                  <div className="summary-card-top">
+                    <span className="summary-icon summary-icon--green">✓</span>
+                    <span className="card-overline">ASISTENCIA REGISTRADA</span>
+                  </div>
+
+                  <div className="summary-value">
+                    {perfil?.asistencia_general ?? '—'}
+                  </div>
+
+                  <div className="summary-foot">
+                    Considera las secciones con asistencia registrada
+                  </div>
                 </article>
+
                 <article className="summary-card">
-                  <div className="summary-card-top"><span className="summary-icon summary-icon--blue">▦</span><span className="card-overline">ASIGNATURAS</span></div>
-                  <div className="summary-value">5 <span className="summary-unit summary-unit--label">inscritas</span></div>
-                  <div className="summary-foot">3 con actividad próxima</div>
+                  <div className="summary-card-top">
+                    <span className="summary-icon summary-icon--blue">▦</span>
+                    <span className="card-overline">ASIGNATURAS</span>
+                  </div>
+
+                  <div className="summary-value">
+                    {perfil?.total_asignaturas ?? '—'}
+                    <span className="summary-unit summary-unit--label">
+                      {' '}inscritas
+                    </span>
+                  </div>
+
+                  <div className="summary-foot">
+                    {perfil?.carrera ?? 'Perfil académico de demostración'}
+                  </div>
                 </article>
               </section>
 
               <section className="content-grid">
                 <div className="panel subjects-panel">
                   <div className="panel-heading">
-                    <div><h2>Mis asignaturas</h2><p>Un vistazo a tu semestre</p></div>
+                    <div><h2>Asignaturas para revisar</h2><p>Ordenadas por promedio actual</p></div>
                     <button className="text-button" onClick={() => setActiveNav('asignaturas')} type="button">Ver todas <span>→</span></button>
                   </div>
                   <div className="subject-list">
-                    {subjects.map((subject) => (
-                      <article className="subject-row" key={subject.code}>
-                        <div className={`subject-symbol subject-symbol--${subject.color}`}>{subject.name.slice(0, 1)}</div>
-                        <div className="subject-info"><strong>{subject.name}</strong><span>{subject.code} · {subject.teacher}</span><div className="subject-progress"><span style={{ width: `${subject.progress}%` }} /></div></div>
-                        <div className="subject-grade"><strong>{subject.grade}</strong><span>Promedio</span></div>
+                    {asignaturasDestacadas.map((subject, index) => (
+                      <article className="subject-row" key={subject.codigo}>
+                        <div className={`subject-symbol subject-symbol--${index % 2 === 0 ? 'yellow' : 'blue'
+                          }`}>
+                          {subject.nombre.slice(0, 1)}
+                        </div>
+
+                        <div className="subject-info">
+                          <strong>{subject.nombre}</strong>
+                          <span>
+                            {subject.codigo} · Sección {subject.seccion}
+                          </span>
+                        </div>
+
+                        <div className="subject-grade">
+                          <strong>{subject.promedio ?? '—'}</strong>
+                          <span>Promedio actual</span>
+                        </div>
                       </article>
                     ))}
                   </div>
-                  <div className="demo-note"><span>i</span> Datos ilustrativos para la demostración del frontend.</div>
+                  <div className="demo-note">
+                    <span>i</span>
+                    Datos académicos ficticios obtenidos desde PostgreSQL.
+                  </div>
                 </div>
 
                 <div className="panel upcoming-panel">
@@ -143,12 +219,31 @@ function App() {
                     <button className="more-button" aria-label="Más opciones" type="button">···</button>
                   </div>
                   <div className="activity-list">
-                    {upcoming.map((activity) => (
-                      <article className="activity-row" key={activity.title}>
-                        <div className="date-tile"><strong>{activity.day}</strong><span>{activity.month}</span></div>
-                        <div className="activity-info"><strong>{activity.title}</strong><span>{activity.subject}</span><small>{activity.type}</small></div>
-                      </article>
-                    ))}
+                    {proximasActividades.length === 0 ? (
+                      <p>No tienes próximas evaluaciones pendientes.</p>
+                    ) : (
+                      proximasActividades.map((actividad) => (
+                        <article
+                          className="activity-row"
+                          key={`${actividad.asignatura}-${actividad.titulo}-${actividad.fecha}`}
+                        >
+                          <div className="date-tile">
+                            <strong>
+                              {Number(actividad.fecha.slice(8, 10))}
+                            </strong>
+                            <span>
+                              {MESES[Number(actividad.fecha.slice(5, 7)) - 1]}
+                            </span>
+                          </div>
+
+                          <div className="activity-info">
+                            <strong>{actividad.titulo}</strong>
+                            <span>{actividad.asignatura}</span>
+                            <small>{actividad.tipo}</small>
+                          </div>
+                        </article>
+                      ))
+                    )}
                   </div>
                   <button className="activity-footer" type="button" onClick={() => setActiveNav('evaluaciones')}>Ver calendario completo <span>→</span></button>
                 </div>
@@ -160,6 +255,50 @@ function App() {
                 <div className="assistant-banner-tip">Prueba preguntando<br /><strong>“¿Qué nota necesito para aprobar?”</strong></div>
               </section>
             </>
+          ) : activeNav === 'asignaturas' ? (
+            <section className="panel" style={{ paddingBottom: 20 }}>
+              <div className="panel-heading">
+                <div>
+                  <h2>Mis asignaturas</h2>
+                  <p>Asignaturas inscritas durante el período académico</p>
+                </div>
+              </div>
+
+              <div className="subject-list">
+                {asignaturas.length === 0 ? (
+                  <p>No hay asignaturas disponibles.</p>
+                ) : (
+                  asignaturas.map((subject, index) => (
+                    <article
+                      className="subject-row"
+                      key={`${subject.codigo}-${subject.seccion}`}
+                    >
+                      <div
+                        className={`subject-symbol subject-symbol--${index % 2 === 0 ? 'yellow' : 'blue'
+                          }`}
+                      >
+                        {subject.nombre.charAt(0)}
+                      </div>
+
+                      <div className="subject-info">
+                        <strong>{subject.nombre}</strong>
+                        <span>
+                          {subject.codigo} · Sección {subject.seccion}
+                        </span>
+                        <span>
+                          Asistencia: {subject.asistencia ?? 'No disponible'}
+                        </span>
+                      </div>
+
+                      <div className="subject-grade">
+                        <strong>{subject.promedio ?? '—'}</strong>
+                        <span>Promedio actual</span>
+                      </div>
+                    </article>
+                  ))
+                )}
+              </div>
+            </section>
           ) : (
             <section className="placeholder-page">
               <div className="placeholder-icon">▤</div>
@@ -172,7 +311,7 @@ function App() {
           )}
         </div>
       </main>
-      <ChatWidget />
+      <ChatWidget nombreEstudiante={perfil ? primerNombre : null} />
     </div>
   )
 }
