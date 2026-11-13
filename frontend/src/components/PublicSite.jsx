@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
+import { iniciarSesion, consultarSesion, cerrarSesion } from '../services/auth'
 import imagenUTM from '../assets/hero.png'
 import './PublicSite.css'
 
-// Navegación temporal: no requiere instalar react-router.
-// El login real se conectará posteriormente a Django.
+// Navegación hash para mantener el portal sin dependencias adicionales.
 function rutaActual() {
   const ruta = window.location.hash.replace(/^#/, '')
   return ruta.startsWith('/') ? ruta : '/'
@@ -119,14 +119,26 @@ function InicioPublico() {
   )
 }
 
-function LoginPublico() {
+function LoginPublico({ onSuccess }) {
   const [aviso, setAviso] = useState('')
+  const [procesando, setProcesando] = useState(false)
 
-  function enviarFormulario(evento) {
+  async function enviarFormulario(evento) {
     evento.preventDefault()
-    // Intencional: todavía no verificamos credenciales en el navegador.
-    // Se conectará al backend Django con autenticación y CSRF.
-    setAviso('La pantalla de acceso está preparada. Falta conectar la autenticación real con Django; no se han enviado tus credenciales.')
+    if (procesando) return
+    const campos = new FormData(evento.currentTarget)
+    const username = String(campos.get('usuario') || '')
+    const password = String(campos.get('clave') || '')
+    setProcesando(true)
+    setAviso('')
+    try {
+      const usuario = await iniciarSesion(username, password)
+      onSuccess(usuario)
+    } catch (error) {
+      setAviso(error.message || 'No fue posible iniciar sesión.')
+    } finally {
+      setProcesando(false)
+    }
   }
 
   return (
@@ -144,27 +156,20 @@ function LoginPublico() {
           <div className="utm-login-emblema" aria-hidden="true">✦</div>
           <span className="utm-etiqueta">PORTAL ESTUDIANTIL UTM</span>
           <h1>Bienvenido de nuevo</h1>
-          <p className="utm-login-subtitulo">Ingresa con tu cuenta institucional para acceder a tu espacio académico.</p>
+          <p className="utm-login-subtitulo">Ingresa con tu cuenta de demostración para acceder a tu espacio académico.</p>
 
           <form onSubmit={enviarFormulario} className="utm-login-formulario">
-            <label htmlFor="utm-usuario">Usuario o correo institucional</label>
-            <input id="utm-usuario" name="usuario" type="text" autoComplete="username" placeholder="Tu usuario institucional" required />
+            <label htmlFor="utm-usuario">Usuario</label>
+            <input id="utm-usuario" name="usuario" type="text" autoComplete="username" placeholder="Tu usuario de demostración" required disabled={procesando} />
             <label htmlFor="utm-clave">Contraseña</label>
-            <input id="utm-clave" name="clave" type="password" autoComplete="current-password" placeholder="Ingresa tu contraseña" required />
-            <button className="utm-boton utm-boton-amarillo utm-boton-ingresar" type="submit">
-              Iniciar sesión <span aria-hidden="true">→</span>
+            <input id="utm-clave" name="clave" type="password" autoComplete="current-password" placeholder="Ingresa tu contraseña" required disabled={procesando} />
+            <button className="utm-boton utm-boton-amarillo utm-boton-ingresar" type="submit" disabled={procesando}>
+              {procesando ? 'Verificando...' : 'Iniciar sesión'} <span aria-hidden="true">→</span>
             </button>
-            {aviso && <p role="status" className="utm-login-aviso">{aviso}</p>}
+            {aviso && <p role="alert" className="utm-login-aviso">{aviso}</p>}
           </form>
-
-          {import.meta.env.DEV && (
-            <div className="utm-demo-acceso">
-              <span>Solo para desarrollo local</span>
-              <a href="#/portal-demo">Ver el portal actual sin autenticación (demo) →</a>
-            </div>
-          )}
         </div>
-        <p className="utm-login-descargo">Universidad ficticia · Acceso de demostración en desarrollo</p>
+        <p className="utm-login-descargo">UTM ficticia · Acceso de demostración</p>
       </main>
     </div>
   )
@@ -172,6 +177,9 @@ function LoginPublico() {
 
 export default function PublicSite({ Portal }) {
   const [ruta, setRuta] = useState(rutaActual)
+  const [usuario, setUsuario] = useState(null)
+  const [revisando, setRevisando] = useState(true)
+  const [errorSesion, setErrorSesion] = useState('')
 
   useEffect(() => {
     const actualizar = () => setRuta(rutaActual())
@@ -179,7 +187,45 @@ export default function PublicSite({ Portal }) {
     return () => window.removeEventListener('hashchange', actualizar)
   }, [])
 
-  if (ruta === '/login') return <LoginPublico />
-  if (ruta === '/portal-demo' && import.meta.env.DEV) return <Portal />
+  useEffect(() => {
+    if (ruta !== '/portal') return
+    let activo = true
+    setRevisando(true)
+    setErrorSesion('')
+    consultarSesion()
+      .then((datos) => {
+        if (!activo) return
+        setUsuario(datos)
+        if (!datos) window.location.hash = '/login'
+      })
+      .catch((error) => {
+        if (activo) setErrorSesion(error.message)
+      })
+      .finally(() => { if (activo) setRevisando(false) })
+    return () => { activo = false }
+  }, [ruta])
+
+  async function salir() {
+    try {
+      await cerrarSesion()
+      setUsuario(null)
+      window.location.hash = '/login'
+    } catch (error) {
+      window.alert(error.message || 'No fue posible cerrar sesión.')
+    }
+  }
+
+  function entrar(datos) {
+    setUsuario(datos)
+    window.location.hash = '/portal'
+  }
+
+  if (ruta === '/login') return <LoginPublico onSuccess={entrar} />
+  if (ruta === '/portal') {
+    if (revisando) return <p style={{ padding: '3rem' }}>Comprobando sesión...</p>
+    if (errorSesion) return <p role="alert" style={{ padding: '3rem' }}>{errorSesion}</p>
+    if (!usuario) return null
+    return <Portal onLogout={salir} />
+  }
   return <InicioPublico />
 }

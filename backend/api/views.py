@@ -5,6 +5,9 @@ from .asistencia_calculos import calcular_asistencia
 from .llm import detectar_intencion
 from .simulaciones import responder_simulacion
 from django.utils import timezone
+from rest_framework.decorators import permission_classes, authentication_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.authentication import SessionAuthentication
 
 from .models import Estudiante, Inscripcion, Evaluacion, Nota
 from decimal import Decimal, ROUND_HALF_UP
@@ -24,6 +27,8 @@ def formato_porcentaje(valor):
 
 
 @api_view(['POST'])
+@authentication_classes([SessionAuthentication])
+@permission_classes([IsAuthenticated])
 def chat(request):
 
     mensaje = request.data.get('message')
@@ -75,7 +80,7 @@ def chat(request):
 
         try:
             estudiante = Estudiante.objects.get(
-                usuario__username='alumno_demo'
+                usuario=request.user
             )
         except Estudiante.DoesNotExist:
             return Response({
@@ -186,7 +191,7 @@ def chat(request):
 
         try:
             estudiante = Estudiante.objects.get(
-                usuario__username='alumno_demo'
+                usuario=request.user
             )
         except Estudiante.DoesNotExist:
             return Response({
@@ -267,7 +272,7 @@ def chat(request):
         # Temporal: estudiante ficticio de demostración
         try:
             estudiante = Estudiante.objects.get(
-                usuario__username='alumno_demo'
+                usuario=request.user
             )
         except Estudiante.DoesNotExist:
             return Response({
@@ -323,11 +328,13 @@ def chat(request):
     })
 
 @api_view(['GET'])
+@authentication_classes([SessionAuthentication])
+@permission_classes([IsAuthenticated])
 def perfil_demo(request):
     try:
         estudiante = Estudiante.objects.select_related(
             'usuario', 'carrera'
-        ).get(usuario__username='alumno_demo')
+        ).get(usuario=request.user)
 
     except Estudiante.DoesNotExist:
         return Response(

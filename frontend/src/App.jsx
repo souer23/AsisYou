@@ -17,7 +17,7 @@ const navItems = [
   { id: 'avisos', label: 'Avisos', icon: '♧' },
 ]
 
-function App() {
+function App({ onLogout }) {
   const [activeNav, setActiveNav] = useState('inicio')
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [perfil, setPerfil] = useState(null)
@@ -103,9 +103,11 @@ function App() {
 
       <main className="main-area">
         <header className="topbar">
+          <button type="button" className="primary-button" onClick={onLogout}> Cerrar sesión </button>
           <button className="mobile-menu" type="button" aria-label="Abrir menú" onClick={() => setSidebarOpen((open) => !open)}>☰</button>
           <div className="breadcrumb"><span>Portal estudiantil</span><span className="breadcrumb-separator">/</span><strong>{activeLabel}</strong></div>
           <div className="topbar-actions">
+
             <button className="icon-button notification-button" aria-label="Notificaciones" type="button">
               ♧<span className="notification-dot" />
             </button>
