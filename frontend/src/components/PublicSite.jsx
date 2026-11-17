@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { iniciarSesion, consultarSesion, cerrarSesion } from '../services/auth'
-import imagenUTM from '../assets/hero.png'
+import imagenUTMs from '../assets/logo-utm.png'
+import frontUTM from '../assets/FrontUTMS.jpg'
 import './PublicSite.css'
 
 // Navegación hash para mantener el portal sin dependencias adicionales.
@@ -13,19 +14,18 @@ function LogoUTM() {
   return (
     <span className="utm-identidad">
       <span className="utm-simbolo" aria-hidden="true">
-        <svg viewBox="0 0 48 48" fill="none" focusable="false">
-          <path d="M5 18 24 8l19 10-19 10L5 18Z" stroke="currentColor" strokeWidth="2.8" strokeLinejoin="round" />
-          <path d="M13 23v11c8 6 14 6 22 0V23" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round" />
-          <path d="M42 19v13" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round" />
-          <circle cx="42" cy="35" r="2.5" fill="currentColor" />
-        </svg>
+        <img 
+          src={imagenUTMs} 
+          alt="" 
+          style={{ width: '100%', height: '100%', objectFit: 'contain' }} 
+        />
       </span>
       <span className="utm-identidad-texto">
         <strong>UTM</strong>
         <small>Universidad Tecnológica del Maule</small>
       </span>
     </span>
-  )
+  );
 }
 
 function InicioPublico() {
@@ -71,11 +71,7 @@ function InicioPublico() {
             <span className="utm-nota-portada">Portal académico de demostración · Proyecto AsisYou</span>
           </div>
           <div className="utm-portada-visual">
-            <img src={imagenUTM} alt="Imagen de presentación del campus universitario UTM" />
-            <div className="utm-tarjeta-flotante">
-              <span className="utm-estrella" aria-hidden="true">✦</span>
-              <span><strong>AsisYou</strong><small>Tu asistente académico virtual</small></span>
-            </div>
+            <img src={frontUTM} alt="Imagen de presentación del campus universitario UTM" />
           </div>
         </section>
 
@@ -187,29 +183,46 @@ export default function PublicSite({ Portal }) {
     return () => window.removeEventListener('hashchange', actualizar)
   }, [])
 
+  // 1. Comprueba la sesión al iniciar, sin importar en qué ruta esté
   useEffect(() => {
-    if (ruta !== '/portal') return
     let activo = true
-    setRevisando(true)
-    setErrorSesion('')
     consultarSesion()
       .then((datos) => {
         if (!activo) return
         setUsuario(datos)
-        if (!datos) window.location.hash = '/login'
+        if (datos && ruta !== '/portal') {
+          window.location.replace('#/portal')
+        } else if (!datos && ruta === '/portal') {
+          window.location.replace('#/login')
+        }
       })
       .catch((error) => {
         if (activo) setErrorSesion(error.message)
       })
-      .finally(() => { if (activo) setRevisando(false) })
+      .finally(() => {
+        if (activo) setRevisando(false)
+      })
     return () => { activo = false }
-  }, [ruta])
+  }, [])
+
+  // 2. Bloquea el botón "Atrás" o cambios manuales en la URL según el estado de sesión
+  useEffect(() => {
+    if (revisando) return
+
+    if (usuario && ruta !== '/portal') {
+      // Si está logueado e intenta ir a inicio o login, lo devuelve al portal
+      window.location.replace('#/portal')
+    } else if (!usuario && ruta === '/portal') {
+      // Si no está logueado e intenta entrar al portal, lo manda al login
+      window.location.replace('#/login')
+    }
+  }, [ruta, usuario, revisando])
 
   async function salir() {
     try {
       await cerrarSesion()
       setUsuario(null)
-      window.location.hash = '/login'
+      window.location.replace('#/login')
     } catch (error) {
       window.alert(error.message || 'No fue posible cerrar sesión.')
     }
@@ -217,15 +230,19 @@ export default function PublicSite({ Portal }) {
 
   function entrar(datos) {
     setUsuario(datos)
-    window.location.hash = '/portal'
+    window.location.replace('#/portal')
   }
 
-  if (ruta === '/login') return <LoginPublico onSuccess={entrar} />
-  if (ruta === '/portal') {
-    if (revisando) return <p style={{ padding: '3rem' }}>Comprobando sesión...</p>
-    if (errorSesion) return <p role="alert" style={{ padding: '3rem' }}>{errorSesion}</p>
-    if (!usuario) return null
+  // Mientras verifica con Django si hay cookie activa, no muestra pantallas falsas
+  if (revisando) return <p style={{ padding: '3rem' }}>Comprobando sesión...</p>
+  if (errorSesion) return <p role="alert" style={{ padding: '3rem' }}>{errorSesion}</p>
+
+  // Si ya hay usuario logueado, siempre renderiza el Portal
+  if (usuario) {
     return <Portal onLogout={salir} />
   }
+
+  // Si NO hay usuario logueado, muestra Login o Inicio público
+  if (ruta === '/login') return <LoginPublico onSuccess={entrar} />
   return <InicioPublico />
 }
